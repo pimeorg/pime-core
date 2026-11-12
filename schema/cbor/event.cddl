@@ -1,0 +1,84 @@
+; pime CBOR data model. All maps are definite-length, keys are UTF-8 text.
+; Text indices count Unicode scalar values.
+
+event = key / text / touch / candidate / surrounding / context / focus /
+        secure / reset / timer / net / audio / ml / permission
+
+key = {
+    "type": "key",
+    "keycode": uint,
+    "modifiers": uint,
+    "action": 0 / 1 / 2,          ; down / up / repeat
+    ? "text": tstr,
+    ? "time_ms": uint
+}
+
+text = { "type": "text", "text": tstr, ? "time_ms": uint }
+
+touch = {
+    "type": "touch",
+    "phase": 0 / 1 / 2 / 3,
+    points: [* { x: uint, y: uint, pressure: uint, t_ms: uint }],
+    ? "time_ms": uint
+}
+
+candidate = { "type": "candidate", index: uint }
+
+surrounding = {
+    "type": "surrounding",
+    before: tstr,
+    after: tstr,
+    cursor: uint
+}
+
+context = {
+    "type": "context",
+    ? "app_id": tstr,
+    ? "field_type": uint,
+    ? "input_type": uint,
+    ? "locale": tstr,
+    ? "page_size": uint,
+    ? "host_caps": uint
+}
+
+focus = { "type": "focus", focused: bool }
+secure = { "type": "secure", secure: bool }
+reset = { "type": "reset", ? "reason": tstr }
+
+timer = { "type": "timer", id: uint, ? "repeat": bool }
+
+net = { "type": "net.data", id: uint, data: bstr, ? "eof": bool }
+    / { "type": "net.state", id: uint, state: uint }
+    / { "type": "net.open", id: uint }
+    / { "type": "net.close", id: uint, ? "error": tstr }
+    / { "type": "net.error", id: uint, code: int, ? "msg": tstr }
+
+audio = { "type": "audio.focus", focus: uint }
+      / { "type": "audio.route", route: uint }
+      / { "type": "audio.frame", id: uint, rate: uint, channels: uint,
+          format: uint, data: bstr }
+
+ml = { "type": "ml.result", job: uint, outputs: [* tensor] }
+   / { "type": "ml.error", job: uint, code: int, ? "msg": tstr }
+
+permission = { "type": "permission", capability: tstr, granted: bool }
+
+tensor = { dtype: tstr, shape: [* uint], layout: "nchw" / "nhwc" / "none",
+           data: bstr }
+
+input = {
+    event: event,
+    state: bstr,
+    workspace: { * tstr => any },
+    context: context,
+    config: { * tstr => any },
+    assets: { * tstr => any }
+}
+
+output = {
+    state: bstr,
+    workspace: [* { k: tstr, v: any }],
+    handled: bool,
+    commands: [* command],
+    ? generation: uint
+}

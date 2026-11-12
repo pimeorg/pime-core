@@ -1,0 +1,20 @@
+# TASK
+
+- [x] 公共 C ABI：`include/pime/`（abi / hal / core / plugin / backend / version）
+- [x] util：状态、SemVer、base64、SHA-256、UTF-8、字符串
+- [x] codec：CBOR（确定长度 + canonical）、YAML 子集、清单、包、签名结构
+- [x] phl：缓冲池、上下文缓存、channel、mutex/condvar、shared_buffer、插件线程
+- [x] platform：文件、动态库、时间、随机、目录（Windows / POSIX）
+- [x] capabilities：net、crypto、audio、ml、store、asset、config、workspace、log、metric、time、timer、caps、permission
+- [x] host：包管理（扫描/验签/安装）、native 运行时（vtable + host 回调）
+- [x] core：会话、插件链、代构建/激活/退休、命令分发、异步事件、host bridge
+- [x] hal：全部 `pime_*` 导出、参数校验、sink 分发、异常拦截
+- [x] tools：pimepack / pimelint / pimeabi / pimebench
+- [x] SDK：native 头、WASM 头、Lua 桩、PimePlugin.cmake
+- [x] schema：manifest JSON Schema、event/command/host CDDL、ABI 基线
+- [x] tests：CBOR、清单、签名、ABI 布局、句柄代际、池化缓冲、插件链（21 项）
+- [x] 构建：CMake + Presets，六平台源码布局，可选第三方能力
+- [x] host/wasm：WAMR 运行时适配（`PIME_BUILD_WASM`）
+- [x] host/lua：Lua 5.4 运行时适配（`PIME_BUILD_LUA`）
+- [x] examples：参考插件与最小宿主
+- [x] README / LICENSE / PROGRESS / CI / 代码风格配置

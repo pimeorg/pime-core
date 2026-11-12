@@ -1,0 +1,101 @@
+; Host request/response envelope for capability calls.
+; kind selects the namespace (workspace/store/asset/config/ctx/channel/sync/
+; shm/net/crypto/audio/ml/time/timer/caps/thread/log/metric/random);
+; op is the namespace operation code.
+
+host_request = any                ; namespace-specific CBOR map
+host_reply = {
+    status: uint,                 ; pime_status
+    ? "result": any,
+    ? "error": { code: int, ? "msg": tstr }
+}
+
+; Common shapes
+workspace_get = { key: tstr }
+workspace_set = { key: tstr, value: any }
+
+store_get = { key: tstr }
+store_set = { key: tstr, value: any }
+store_del = { key: tstr }
+store_batch = { ops: [* { op: "set" / "del", key: tstr, ? "value": any }] }
+store_scan = { prefix: tstr, ? "limit": uint }
+
+asset_open = { name: tstr }
+asset_read = { handle: uint, offset: uint, len: uint }
+asset_map = { handle: uint, offset: uint, len: uint }
+
+config_get = { key: tstr }
+config_list = { prefix: tstr }
+
+ctx_acquire = {
+    name: tstr,
+    kind: "data" / "instance" / "resource",
+    ? "pin": bool,
+    ? "create": bool
+}
+ctx_call = { handle: uint, method: tstr, input: any }
+ctx_release = { handle: uint }
+ctx_pin = { handle: uint, pinned: bool }
+ctx_info = { name: tstr, kind: tstr }
+ctx_drop = { name: tstr, kind: tstr }
+
+channel_create = { ? "capacity": uint }
+channel_send = { handle: uint, message: any, ? "timeout_ms": uint }
+channel_recv = { handle: uint, ? "timeout_ms": uint }
+channel_close = { handle: uint, ? "mode": "drain" / "abort" }
+
+sync_mutex_create = { ? "recursive": bool }
+sync_mutex_lock = { handle: uint, ? "timeout_ms": uint }
+sync_mutex_unlock = { handle: uint }
+sync_condvar_create = {}
+sync_condvar_wait = { condvar: uint, mutex: uint, ? "timeout_ms": uint }
+sync_condvar_signal = { handle: uint }
+sync_condvar_broadcast = { handle: uint }
+sync_close = { handle: uint }
+
+shm_create = { bytes: uint }
+shm_open = { handle: uint }
+shm_read = { handle: uint, offset: uint, len: uint }
+shm_write = { handle: uint, offset: uint, data: bstr }
+shm_resize = { handle: uint, bytes: uint }
+shm_map = { handle: uint }
+shm_unmap = { handle: uint }
+shm_close = { handle: uint }
+
+net_http = { method: tstr, url: tstr, ? "headers": { * tstr => tstr },
+             ? "body": bstr, ? "timeout_ms": uint }
+net_open = { protocol: "ws" / "wss" / "sse", url: tstr, ? "heartbeat_ms": uint }
+net_send = { handle: uint, data: bstr }
+net_close = { handle: uint }
+
+crypto_digest = { alg: tstr, data: bstr }
+crypto_mac = { alg: tstr, key: bstr, data: bstr }
+crypto_aead = { alg: tstr, key: bstr, iv: bstr, ? "aad": bstr, data: bstr }
+crypto_verify = { key: bstr, alg: tstr, data: bstr, signature: bstr }
+crypto_sign = { key: bstr, alg: tstr, data: bstr }
+crypto_kdf = { alg: tstr, key: bstr, salt: bstr, info: bstr, len: uint }
+
+audio_frame = { rate: uint, channels: uint, format: uint, data: bstr }
+
+ml_load = { model_id: tstr, ? "options": { threads: uint, ? "quant": tstr } }
+ml_run = { session: uint, inputs: [* tensor] }
+
+timer_after = { delay_ms: uint, id: tstr }
+timer_every = { period_ms: uint, id: tstr }
+timer_cancel = { handle: uint }
+
+thread_create = { name: tstr, entry: tstr, ? "priority": tstr,
+                  ? "stack_kb": uint }
+thread_post = { handle: uint, message: any }
+thread_recv = { handle: uint, ? "timeout_ms": uint }
+thread_park = { handle: uint, ? "timeout_ms": uint }
+thread_unpark = { handle: uint }
+thread_close = { handle: uint }
+thread_join = { handle: uint, ? "timeout_ms": uint }
+thread_info = { handle: uint }
+
+log_write = { level: uint, tag: tstr, message: tstr }
+metric_add = { name: tstr, value: int }
+metric_set = { name: tstr, value: int }
+metric_get = { name: tstr }
+metric_snapshot = {}

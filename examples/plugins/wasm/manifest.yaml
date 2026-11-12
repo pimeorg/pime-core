@@ -1,0 +1,14 @@
+id: pime-uppercase-wasm
+version: 1.0.0
+abi: { major: 1, minor: 0 }
+min_core: "1.0.0"
+state_schema: 1
+store_schema: 1
+runtime: wasm
+trusted: false
+role: parse
+platforms: [windows-x64, linux-x64, macos-arm64, macos-x64, ios-arm64, android-arm64, harmony-arm64]
+entry: pime_process
+capabilities: [input.read, output.emit]
+limits: { memory_mb: 32, instructions: 10000000, time_ms: 5, scratch_bytes: 16384, max_frame_bytes: 65536 }
+budget: { sync_us: 50, async_ms: 20 }

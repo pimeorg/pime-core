@@ -1,0 +1,51 @@
+; Commands returned by a plugin in the output frame. Unknown types are
+; rejected with PIME_CORRUPT; a host without the matching sink returns
+; PIME_UNSUPPORTED.
+
+command = set_composition / commit / show_candidates / hide_candidates /
+          audio_out / beep / clear_ink / notify / log / metric
+
+set_composition = {
+    "type": "set_composition",
+    text: tstr,
+    cursor: uint,                 ; UTF-8 byte offset into text
+    ? "segments": [* segment]
+}
+
+segment = { start: uint, end: uint, type: uint }
+
+commit = { "type": "commit", text: tstr }
+
+show_candidates = {
+    "type": "show_candidates",
+    items: [* { text: tstr, ? "comment": tstr, ? "label": tstr }]
+}
+
+hide_candidates = { "type": "hide_candidates" }
+
+audio_out = {
+    "type": "audio_out",
+    ? "rate": uint,
+    ? "channels": uint,
+    ? "format": uint,             ; 0 = s16le, 1 = f32le
+    data: bstr,
+    ? "time_ms": uint
+}
+
+beep = { "type": "beep" }
+clear_ink = { "type": "clear_ink" }
+notify = { "type": "notify", code: int }
+
+log = {
+    "type": "log",
+    ? "level": "debug" / "info" / "warn" / "error" / uint,
+    ? "tag": tstr,
+    message: tstr
+}
+
+metric = {
+    "type": "metric",
+    name: tstr,
+    value: int,
+    ? "add": bool
+}
