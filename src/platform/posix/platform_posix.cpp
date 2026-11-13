@@ -4,6 +4,12 @@
 #include <sys/time.h>
 #include <unistd.h>
 
+#if defined(__ANDROID__)
+#include <sys/syscall.h>
+#elif defined(__linux__) || defined(__OHOS__)
+#include <sys/random.h>
+#endif
+
 #include <cerrno>
 #include <cstring>
 #include <ctime>
@@ -22,7 +28,13 @@ pime_status random_bytes(uint8_t* out, size_t len) {
 #if defined(__linux__) || defined(__ANDROID__) || defined(__OHOS__)
     size_t done = 0;
     while (done < len) {
-        ssize_t n = getrandom(out + done, len - done, 0);
+#if defined(__ANDROID__)
+        /* bionic only declares getrandom() from API 28; the syscall itself
+           exists on every supported kernel. */
+        const long n = ::syscall(__NR_getrandom, out + done, len - done, 0);
+#else
+        const ssize_t n = getrandom(out + done, len - done, 0);
+#endif
         if (n < 0) {
             if (errno == EINTR) continue;
             break;
