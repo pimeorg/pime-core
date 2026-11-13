@@ -18,3 +18,4 @@
 - [x] host/lua：Lua 5.4 运行时适配（`PIME_BUILD_LUA`）
 - [x] examples：参考插件与最小宿主
 - [x] README / LICENSE / PROGRESS / CI / 代码风格配置
+- [x] 真实 WAMR 2.4.1 联调：五插件链在宿主上加载、build/activate、`nihao` → `你好`

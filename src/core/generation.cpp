@@ -247,26 +247,34 @@ pime_status Core::instantiate(const BuildRequest& request,
     item.caps.store_schema = plugin.manifest.store_schema;
     item.caps.limits = plugin.manifest.limits;
 
-    std::unique_ptr<host::PluginInstance> instance;
-    status = host::create_instance(plugin.manifest, plugin.dir, &item.caps,
-                                   this, alias, generation->id, &instance);
-    if (status != PIME_OK) return status;
-    item.instance = std::move(instance);
-
-    std::vector<uint8_t> encoded;
-    codec::encode(config, &encoded);
-    status = item.instance->init(encoded);
-    if (status != PIME_OK) {
-        item.instance->shutdown();
-        item.instance.reset();
-        return status;
-    }
-    item.instance->set_session(0, false, 0);
-
     generation->chain.push_back(std::move(item));
     ChainItem& stored = generation->chain.back();
     stored.caps.manifest = &stored.manifest;
-    permission_.declare(alias, plugin.manifest.capabilities);
+
+    /* The instance keeps a pointer to its ChainItem's capability context, so it
+     * must be created against the stored element, never the local one: moving
+     * the local item into the chain would leave the pointer on a moved-from
+     * context. The chain is a deque, so later pushes do not relocate it. */
+    std::unique_ptr<host::PluginInstance> instance;
+    status = host::create_instance(stored.manifest, stored.package_dir,
+                                   &stored.caps, this, alias, generation->id,
+                                   &instance);
+    if (status != PIME_OK) {
+        generation->chain.pop_back();
+        return status;
+    }
+    stored.instance = std::move(instance);
+
+    std::vector<uint8_t> encoded;
+    codec::encode(config, &encoded);
+    status = stored.instance->init(encoded);
+    if (status != PIME_OK) {
+        stored.instance->shutdown();
+        generation->chain.pop_back();
+        return status;
+    }
+    stored.instance->set_session(0, false, 0);
+    permission_.declare(alias, stored.manifest.capabilities);
     return PIME_OK;
 }
 

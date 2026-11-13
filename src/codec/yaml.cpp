@@ -37,9 +37,51 @@ std::string strip_comment(std::string_view line) {
     return std::string(line);
 }
 
+/* A flow collection ('[' or '{') only starts continuation folding when it
+ * appears at a value position (document start, after ':' or after '-'), so
+ * brackets inside plain text such as descriptions stay literal. */
+bool opens_flow(std::string_view s, size_t at) {
+    size_t i = at;
+    while (i > 0 && std::isspace(static_cast<unsigned char>(s[i - 1]))) --i;
+    if (i == 0) return true;
+    return s[i - 1] == ':' || s[i - 1] == '-';
+}
+
+/* Returns the flow nesting depth at the end of the line. Quotes are tracked
+ * only inside a flow collection, so apostrophes in plain scalars elsewhere do
+ * not swallow following lines. */
+int scan_flow(std::string_view s, int depth, bool* single, bool* double_q) {
+    for (size_t i = 0; i < s.size(); ++i) {
+        const char c = s[i];
+        if (depth == 0) {
+            if ((c == '[' || c == '{') && opens_flow(s, i)) depth = 1;
+            continue;
+        }
+        if (c == '\'' && !*double_q) {
+            *single = !*single;
+        } else if (c == '"' && !*single) {
+            if (!(i > 0 && s[i - 1] == '\\' && *double_q)) *double_q = !*double_q;
+        } else if (*single || *double_q) {
+            continue;
+        } else if (c == '[' || c == '{') {
+            ++depth;
+        } else if (c == ']' || c == '}') {
+            if (--depth == 0) {
+                *single = false;
+                *double_q = false;
+            }
+        }
+    }
+    return depth;
+}
+
 pime_status preprocess(std::string_view input, std::vector<Line>* out,
                        std::string* error) {
     size_t start = 0;
+    std::string pending;
+    int pending_indent = 0;
+    int depth = 0;
+    bool single = false, double_q = false;
     while (start <= input.size()) {
         size_t end = input.find('\n', start);
         if (end == std::string_view::npos) end = input.size();
@@ -57,9 +99,28 @@ pime_status preprocess(std::string_view input, std::vector<Line>* out,
         std::string content = strip_comment(raw.substr(i));
         while (!content.empty() && std::isspace(static_cast<unsigned char>(content.back())))
             content.pop_back();
-        if (!content.empty()) out->push_back(Line{indent, content});
+        if (!content.empty()) {
+            if (pending.empty()) {
+                pending_indent = indent;
+                pending = content;
+            } else {
+                /* YAML folds a line break inside a flow collection into a
+                 * single space. */
+                pending.push_back(' ');
+                pending += content;
+            }
+            depth = scan_flow(content, depth, &single, &double_q);
+            if (depth == 0 && !single && !double_q) {
+                out->push_back(Line{pending_indent, std::move(pending)});
+                pending.clear();
+            }
+        }
         if (end == input.size()) break;
         start = end + 1;
+    }
+    if (!pending.empty()) {
+        *error = "unterminated flow collection";
+        return PIME_INVALID;
     }
     return PIME_OK;
 }
@@ -306,6 +367,10 @@ pime_status parse_inline(std::string_view text, Value* out) {
 
 bool split_key_value(std::string_view text, std::string* key, std::string* value,
                      bool* has_value) {
+    /* A flow collection is a whole value, never a 'key: value' item; the
+     * first ':' inside it belongs to the flow mapping. */
+    if (!text.empty() && (text.front() == '{' || text.front() == '['))
+        return false;
     bool single = false, double_q = false;
     size_t i = 0;
     if (!text.empty() && (text.front() == '"' || text.front() == '\'')) {

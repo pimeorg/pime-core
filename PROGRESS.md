@@ -1,6 +1,6 @@
 # pime-core 进度
 
-更新：2026-11-12
+更新：2026-11-13
 
 ## 环境与需求
 
@@ -9,6 +9,10 @@
 允许自主设计，但不过度设计。仓库内没有第三方运行时（OpenSSL / curl / lws /
 Opus / WAMR / Lua），因此这些能力在构建时编译为显式 `PIME_UNSUPPORTED`，
 不静默降级。
+
+后续（2026-11-13）宿主侧要求让 WASM 插件链真正运行：把 WAMR 2.4.1 源码放在
+`pime-android/third_party/wamr`，用真实库链接 core 的 WASM 适配层，在 Windows
+宿主上跑通插件包加载与整条拼音链。此举发现并修复了若干 core 缺陷（见下）。
 
 ## 已完成
 
@@ -21,7 +25,7 @@ Opus / WAMR / Lua），因此这些能力在构建时编译为显式 `PIME_UNSUP
 | platform | 文件/目录、动态库、单调/墙钟时间、随机、路径 |
 | capabilities | 14 个能力域；OpenSSL/curl/lws/Opus 存在时启用，否则 UNSUPPORTED |
 | host | 包扫描/验签/安装；native 插件 vtable、host 回调（check/invoke/emit） |
-| host/wasm | WAMR 适配：模块加载/实例化、scratch 与池化输出缓冲、全部 host import |
+| host/wasm | WAMR 2.4.1 适配：模块加载/实例化、scratch 与池化输出缓冲、全部 host import；真实库上联调通过（快速解释器） |
 | host/lua | Lua 5.4 适配：受限分配器与指令预算、CBOR↔table、全部 `pime.*` 能力 |
 | core | 会话、插件链、代、命令、异步事件、emit 队列、停止时清理 |
 | hal | 全部 C 入口、结构校验、UTF-8/NUL 校验、sink 分发、异常拦截 |
@@ -53,13 +57,28 @@ printf 'hello\n' | ./build/examples/hosts/minimal/pime_minimal_host.exe \
 
 ## 待完成
 
-- WASM / Lua 适配层已完整实现，但本机没有 WAMR 与 Lua 5.4 源码或库：
-  仅用与 `wasm_export.h` / Lua 5.4 API 一致的桩头做过编译检查，
-  尚未在真实第三方库上链接与运行。构建选项 `PIME_BUILD_WASM` /
-  `PIME_BUILD_LUA` 在缺少依赖时会明确报错，不会静默降级。
+- Lua 适配层已完整实现，但本机没有 Lua 5.4 源码或库：仅用与 Lua 5.4 API 一致的
+  桩头做过编译检查，尚未在真实库上链接与运行。WASM 已在真实 WAMR 上运行。
+  构建选项 `PIME_BUILD_WASM` / `PIME_BUILD_LUA` 在缺少依赖时会明确报错，
+  不会静默降级。
 - 各平台宿主桥接（TSF、InputMethodKit、JNI、Node-API、IBus/Fcitx5）按
   `docs/structure.md` 属于宿主仓库或 `examples/hosts/`，当前只提供可移植的
   控制台最小宿主。
+
+## 真实 WAMR 联调中修复的缺陷
+
+1. **host import 签名格式**：WAMR 的 `NativeSymbol.signature` 是
+   `(params)ret`（如 `(*i*i*)i`），此前用的是 `wasm_export.h` 注释里的
+   `i(**i*i*)` 简写，`wasm_runtime_register_natives` 直接报签名不匹配。
+2. **能力上下文生命周期**：`Core::instantiate` 先把 `ChainItem` 移入链，再把
+   `&item.caps` 交给实例；指针落在一个已移动的栈对象上，资产请求读到空指针。
+   改为先 `push_back`，再对 `chain.back()` 建实例（链是 `deque`，元素地址稳定）。
+3. **YAML 流式集合**：清单里的多行 `platforms: [ ... ]` 和设置项
+   `- { key: ... }` 无法解析。`preprocess` 现在会折叠跨行的流式集合，
+   `split_key_value` 不再把以 `{` / `[` 开头的整值当成 `key: value`。
+4. 插件模块必须链接成自包含模块（`-Wl,--allow-undefined`，不使用 `-shared`），
+   否则 `__stack_pointer` 被当成 core 需提供的导入。这属于插件仓库工具链，
+   记录在此便于对照。
 
 ## 设计取舍
 

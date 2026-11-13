@@ -79,7 +79,6 @@ public:
             module_ = nullptr;
             return PIME_CORRUPT;
         }
-        wasm_runtime_set_user_data(instance_, this);
 
         func_init_ = wasm_runtime_lookup_function(instance_, "pime_init");
         func_process_ = wasm_runtime_lookup_function(instance_, "pime_process");
@@ -91,15 +90,16 @@ public:
             wasm_runtime_lookup_function(instance_, "pime_scratch_cap");
         if (!func_init_ || !func_process_) return PIME_CORRUPT;
 
-        exec_env_ = wasm_runtime_create_exec_env(func_process_, 64 * 1024);
+        exec_env_ = wasm_runtime_create_exec_env(instance_, 64 * 1024);
         if (!exec_env_) return PIME_NO_MEMORY;
+        wasm_runtime_set_user_data(exec_env_, this);
 
         scratch_ptr_ = call_u32(func_scratch_ptr_);
         scratch_cap_ = call_u32(func_scratch_cap_);
 
         out_cap_ = std::min(std::max(max_frame_, kMinimumOut), kMaxFrame);
-        out_offset_ = module_malloc(out_cap_);
-        out_len_offset_ = module_malloc(sizeof(uint32_t));
+        out_offset_ = alloc_module(out_cap_);
+        out_len_offset_ = alloc_module(sizeof(uint32_t));
         if (!out_offset_ || !out_len_offset_) return PIME_NO_MEMORY;
 
         const uint32_t config_offset =
@@ -232,7 +232,7 @@ private:
                     in_len);
                 in_offset = scratch_ptr_;
             } else {
-                in_offset = module_malloc(in_len);
+                in_offset = alloc_module(in_len);
                 if (!in_offset) return PIME_NO_MEMORY;
                 allocated = true;
                 std::memcpy(
@@ -254,7 +254,7 @@ private:
             } else if (needed > out_cap_) {
                 wasm_runtime_module_free(instance_, out_offset_);
                 out_cap_ = needed;
-                out_offset_ = module_malloc(out_cap_);
+                out_offset_ = alloc_module(out_cap_);
                 if (!out_offset_) {
                     st = PIME_NO_MEMORY;
                 } else {
@@ -276,7 +276,7 @@ private:
         return PIME_OK;
     }
 
-    uint64_t module_malloc(uint32_t size) {
+    uint64_t alloc_module(uint32_t size) {
         if (!instance_) return 0;
         void* native = nullptr;
         return wasm_runtime_module_malloc(instance_, size, &native);
@@ -289,7 +289,7 @@ private:
                         data, len);
             return static_cast<uint32_t>(scratch_ptr_);
         }
-        const uint64_t offset = module_malloc(len);
+        const uint64_t offset = alloc_module(len);
         if (!offset) return 0;
         std::memcpy(wasm_runtime_addr_app_to_native(instance_, offset), data,
                     len);
@@ -310,7 +310,7 @@ private:
 
     uint32_t call_u32(wasm_function_inst_t func) {
         if (!func || !instance_) return 0;
-        wasm_exec_env_t env = wasm_runtime_create_exec_env(func, 16 * 1024);
+        wasm_exec_env_t env = wasm_runtime_create_exec_env(instance_, 16 * 1024);
         if (!env) return 0;
         uint32_t argv[1] = {0};
         const bool ok = wasm_runtime_call_wasm(env, func, 0, argv);
@@ -347,10 +347,7 @@ private:
 };
 
 WasmInstance* own(wasm_exec_env_t env) {
-    wasm_module_inst_t instance = wasm_runtime_get_module_inst(env);
-    return instance ? static_cast<WasmInstance*>(
-                          wasm_runtime_get_user_data(instance))
-                    : nullptr;
+    return static_cast<WasmInstance*>(wasm_runtime_get_user_data(env));
 }
 
 namespace {
@@ -861,42 +858,42 @@ uint32_t h_shm(wasm_exec_env_t env, const uint8_t* op, const uint8_t* in,
 }
 
 NativeSymbol g_symbols[] = {
-    {"pime_host_net_request", (void*)h_net_request, "i(*i)", nullptr},
-    {"pime_host_net_result", (void*)h_net_result, "i(i*i)", nullptr},
-    {"pime_host_net_open", (void*)h_net_open, "i(**i)", nullptr},
-    {"pime_host_net_send", (void*)h_net_send, "i(i*i)", nullptr},
-    {"pime_host_net_close", (void*)h_net_close, "i(i)", nullptr},
-    {"pime_host_crypto", (void*)h_crypto, "i(**i*)", nullptr},
-    {"pime_host_audio", (void*)h_audio, "i(**i*)", nullptr},
-    {"pime_host_ml_load", (void*)h_ml_load, "i(*i)", nullptr},
-    {"pime_host_ml_load_ex", (void*)h_ml_load_ex, "i(*i*)", nullptr},
-    {"pime_host_ml_run", (void*)h_ml_run, "i(i*i*i*)", nullptr},
-    {"pime_host_ml_run_async", (void*)h_ml_run_async, "i(i*i)", nullptr},
-    {"pime_host_ml_cancel", (void*)h_ml_cancel, "i(i)", nullptr},
-    {"pime_host_ml_free", (void*)h_ml_free, "i(i)", nullptr},
-    {"pime_host_log", (void*)h_log, "i(i*i*i)", nullptr},
-    {"pime_host_workspace", (void*)h_workspace, "i(**i*i*)", nullptr},
-    {"pime_host_store", (void*)h_store, "i(**i*i*)", nullptr},
-    {"pime_host_asset", (void*)h_asset, "i(**i*i*)", nullptr},
-    {"pime_host_config", (void*)h_config, "i(**i*i*)", nullptr},
-    {"pime_host_ctx", (void*)h_ctx, "i(**i*i*)", nullptr},
-    {"pime_host_channel", (void*)h_channel, "i(**i*i*)", nullptr},
-    {"pime_host_sync", (void*)h_sync, "i(**i*i*)", nullptr},
-    {"pime_host_shm", (void*)h_shm, "i(**i*i*)", nullptr},
-    {"pime_host_time", (void*)h_time, "I(i)", nullptr},
-    {"pime_host_random", (void*)h_random, "i(*i)", nullptr},
-    {"pime_host_timer_start", (void*)h_timer_start, "i(ii*i)", nullptr},
-    {"pime_host_timer_cancel", (void*)h_timer_cancel, "i(i)", nullptr},
-    {"pime_host_caps", (void*)h_caps, "i(*i*)", nullptr},
-    {"pime_host_thread_create", (void*)h_thread_create, "i(*i*)", nullptr},
-    {"pime_host_thread_post", (void*)h_thread_post, "i(i*i)", nullptr},
-    {"pime_host_thread_recv", (void*)h_thread_recv, "i(i*i*i)", nullptr},
-    {"pime_host_thread_park", (void*)h_thread_park, "i(ii)", nullptr},
-    {"pime_host_thread_unpark", (void*)h_thread_unpark, "i(i)", nullptr},
-    {"pime_host_thread_close", (void*)h_thread_close, "i(i)", nullptr},
-    {"pime_host_thread_join", (void*)h_thread_join, "i(ii)", nullptr},
-    {"pime_host_thread_info", (void*)h_thread_info, "i(i*i*)", nullptr},
-    {"pime_host_emit", (void*)h_emit, "i(I*i)", nullptr},
+    {"pime_host_net_request", (void*)h_net_request, "(*i)i", nullptr},
+    {"pime_host_net_result", (void*)h_net_result, "(i*i)i", nullptr},
+    {"pime_host_net_open", (void*)h_net_open, "(**i)i", nullptr},
+    {"pime_host_net_send", (void*)h_net_send, "(i*i)i", nullptr},
+    {"pime_host_net_close", (void*)h_net_close, "(i)i", nullptr},
+    {"pime_host_crypto", (void*)h_crypto, "(**i*)i", nullptr},
+    {"pime_host_audio", (void*)h_audio, "(**i*)i", nullptr},
+    {"pime_host_ml_load", (void*)h_ml_load, "(*i)i", nullptr},
+    {"pime_host_ml_load_ex", (void*)h_ml_load_ex, "(*i*)i", nullptr},
+    {"pime_host_ml_run", (void*)h_ml_run, "(i*i*i*)i", nullptr},
+    {"pime_host_ml_run_async", (void*)h_ml_run_async, "(i*i)i", nullptr},
+    {"pime_host_ml_cancel", (void*)h_ml_cancel, "(i)i", nullptr},
+    {"pime_host_ml_free", (void*)h_ml_free, "(i)i", nullptr},
+    {"pime_host_log", (void*)h_log, "(i*i*i)i", nullptr},
+    {"pime_host_workspace", (void*)h_workspace, "(**i*i*)i", nullptr},
+    {"pime_host_store", (void*)h_store, "(**i*i*)i", nullptr},
+    {"pime_host_asset", (void*)h_asset, "(**i*i*)i", nullptr},
+    {"pime_host_config", (void*)h_config, "(**i*i*)i", nullptr},
+    {"pime_host_ctx", (void*)h_ctx, "(**i*i*)i", nullptr},
+    {"pime_host_channel", (void*)h_channel, "(**i*i*)i", nullptr},
+    {"pime_host_sync", (void*)h_sync, "(**i*i*)i", nullptr},
+    {"pime_host_shm", (void*)h_shm, "(**i*i*)i", nullptr},
+    {"pime_host_time", (void*)h_time, "(i)I", nullptr},
+    {"pime_host_random", (void*)h_random, "(*i)i", nullptr},
+    {"pime_host_timer_start", (void*)h_timer_start, "(ii*i)i", nullptr},
+    {"pime_host_timer_cancel", (void*)h_timer_cancel, "(i)i", nullptr},
+    {"pime_host_caps", (void*)h_caps, "(*i*)i", nullptr},
+    {"pime_host_thread_create", (void*)h_thread_create, "(*i*)i", nullptr},
+    {"pime_host_thread_post", (void*)h_thread_post, "(i*i)i", nullptr},
+    {"pime_host_thread_recv", (void*)h_thread_recv, "(i*i*i)i", nullptr},
+    {"pime_host_thread_park", (void*)h_thread_park, "(ii)i", nullptr},
+    {"pime_host_thread_unpark", (void*)h_thread_unpark, "(i)i", nullptr},
+    {"pime_host_thread_close", (void*)h_thread_close, "(i)i", nullptr},
+    {"pime_host_thread_join", (void*)h_thread_join, "(ii)i", nullptr},
+    {"pime_host_thread_info", (void*)h_thread_info, "(i*i*)i", nullptr},
+    {"pime_host_emit", (void*)h_emit, "(I*i)i", nullptr},
 };
 
 }  // namespace
