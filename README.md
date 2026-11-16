@@ -79,4 +79,7 @@ See `PROGRESS.md` and `TASK.md`. Design references: `docs/core.md`,
 
 ## License
 
-MIT, see `LICENSE`.
+Apache License 2.0, see `LICENSE`.
+
+Third-party components keep their own licenses; the bundled WAMR sources used by
+the WASM backend are Apache 2.0 as well.
