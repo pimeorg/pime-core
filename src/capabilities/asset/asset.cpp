@@ -58,17 +58,22 @@ pime_status AssetService::size(uint64_t handle, uint64_t* size) const {
     return PIME_OK;
 }
 
-pime_status AssetService::read(uint64_t handle, uint32_t offset, void* out,
-                               uint32_t cap, uint32_t* out_len) const {
+pime_status AssetService::read(uint64_t handle, uint32_t offset, uint32_t len,
+                               void* out, uint32_t cap,
+                               uint32_t* out_len) const {
     if (!out_len) return PIME_INVALID;
     auto asset = assets_.get(handle, nullptr);
     if (!asset) return PIME_STALE;
     if (offset > asset->data.size()) return PIME_INVALID;
-    const uint32_t avail = static_cast<uint32_t>(asset->data.size() - offset);
-    *out_len = avail;
-    if (avail > cap) return PIME_BUFFER_TOO_SMALL;
-    if (avail && !out) return PIME_INVALID;
-    if (avail) std::memcpy(out, asset->data.data() + offset, avail);
+    /* `len` is the caller's chunk size, not "everything up to EOF": large
+     * dictionaries are read in pieces because one host reply is capped. */
+    const uint64_t remaining = asset->data.size() - offset;
+    const uint32_t take =
+        remaining < len ? static_cast<uint32_t>(remaining) : len;
+    *out_len = take;
+    if (take > cap) return PIME_BUFFER_TOO_SMALL;
+    if (take && !out) return PIME_INVALID;
+    if (take) std::memcpy(out, asset->data.data() + offset, take);
     return PIME_OK;
 }
 

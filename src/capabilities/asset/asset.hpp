@@ -24,8 +24,8 @@ public:
     pime_status open(const std::string& root, const std::string& path,
                      uint64_t* handle);
     pime_status size(uint64_t handle, uint64_t* size) const;
-    pime_status read(uint64_t handle, uint32_t offset, void* out, uint32_t cap,
-                     uint32_t* out_len) const;
+    pime_status read(uint64_t handle, uint32_t offset, uint32_t len, void* out,
+                     uint32_t cap, uint32_t* out_len) const;
     pime_status map(uint64_t handle, const void** ptr, uint32_t* size) const;
     pime_status close(uint64_t handle);
 

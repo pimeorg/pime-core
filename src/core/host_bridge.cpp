@@ -317,7 +317,8 @@ pime_status Core::invoke(const host::HostCallContext& context,
                 uint32_t out_len = 0;
                 pime_status status = assets_.read(
                     handle_field(request), static_cast<uint32_t>(offset),
-                    data.data(), static_cast<uint32_t>(data.size()), &out_len);
+                    static_cast<uint32_t>(length), data.data(),
+                    static_cast<uint32_t>(data.size()), &out_len);
                 if (status != PIME_OK) return reply(status, Value::null());
                 data.resize(out_len);
                 return reply(PIME_OK, bytes_value(data));
