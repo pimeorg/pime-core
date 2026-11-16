@@ -148,6 +148,7 @@ public:
     pime_status secure(Session* session, bool secure);
     pime_status reset(Session* session);
     pime_status audio_in(Session* session, const pime_audio_frame& frame);
+    pime_status voice(Session* session, uint32_t action);
 
     pime_status pause();
     pime_status resume();

@@ -1,5 +1,6 @@
 #include "core.hpp"
 
+#include <pime/core.h>
 #include <pime/version.h>
 
 #include <algorithm>
@@ -828,6 +829,17 @@ pime_status Core::audio_in(Session* session, const pime_audio_frame& frame) {
     data.data.assign(static_cast<const uint8_t*>(frame.data),
                      static_cast<const uint8_t*>(frame.data) + frame.data_len);
     return audio_.push_capture(session->id, data);
+}
+
+pime_status Core::voice(Session* session, uint32_t action) {
+    if (!session) return PIME_INVALID;
+    if (action > PIME_VOICE_CANCEL) return PIME_INVALID;
+    if (session->secure && action == PIME_VOICE_START) return PIME_DENIED;
+    Value value = make_map();
+    value.set("type", text_value("voice"));
+    value.set("action", Value::uint_v(action));
+    std::vector<Value> commands;
+    return run_event(session, value, nullptr, &commands);
 }
 
 /* --------------------------- lifecycle --------------------------------- */

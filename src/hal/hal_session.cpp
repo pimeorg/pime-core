@@ -156,4 +156,9 @@ pime_status pime_core_audio_in(pime_session* session,
     return session->core->audio_in(session->impl, *frame);
 }
 
+pime_status pime_core_voice(pime_session* session, uint32_t action) {
+    if (!session_ok(session, nullptr)) return PIME_INVALID;
+    return session->core->voice(session->impl, action);
+}
+
 }  // extern "C"

@@ -52,6 +52,13 @@ PIME_API pime_status pime_core_reset(pime_session* session);
 PIME_API pime_status pime_core_audio_in(pime_session* session,
                                         const pime_audio_frame* frame);
 
+/* voice input control (owner thread). Dispatches a `voice` event to the
+ * active chain; recognize plugins start/stop capture on it. */
+#define PIME_VOICE_START 0u
+#define PIME_VOICE_STOP 1u
+#define PIME_VOICE_CANCEL 2u
+PIME_API pime_status pime_core_voice(pime_session* session, uint32_t action);
+
 /* platform lifecycle (owner thread) */
 PIME_API pime_status pime_core_pause(pime_core* core);
 PIME_API pime_status pime_core_resume(pime_core* core);
