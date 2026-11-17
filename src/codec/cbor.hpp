@@ -72,6 +72,10 @@ pime_status decode(const uint8_t* data, size_t len, Value* out);
 pime_status decode(std::string_view data, Value* out);
 
 void encode(const Value& value, std::vector<uint8_t>* out);
+
+/* Appends one encoded value to `out` instead of replacing its contents. Lets
+ * callers assemble a frame around a pre-encoded workspace without copying it. */
+void encode_append(const Value& value, std::vector<uint8_t>* out);
 std::vector<uint8_t> encode_to_vector(const Value& value);
 
 /* Canonical key-sorted encoding (RFC 8949 core deterministic subset). */

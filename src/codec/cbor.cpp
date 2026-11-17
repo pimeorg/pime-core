@@ -461,6 +461,11 @@ void encode(const Value& value, std::vector<uint8_t>* out) {
     encode_impl(value, out);
 }
 
+void encode_append(const Value& value, std::vector<uint8_t>* out) {
+    if (!out) return;
+    encode_impl(value, out);
+}
+
 std::vector<uint8_t> encode_to_vector(const Value& value) {
     std::vector<uint8_t> out;
     encode(value, &out);

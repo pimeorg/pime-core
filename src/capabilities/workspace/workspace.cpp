@@ -95,4 +95,36 @@ codec::Value Workspace::snapshot() const {
     return map;
 }
 
+namespace {
+
+void append_head(uint8_t major, uint64_t value, std::vector<uint8_t>* out) {
+    const uint8_t base = static_cast<uint8_t>(major << 5);
+    if (value < 24) {
+        out->push_back(static_cast<uint8_t>(base | value));
+    } else if (value <= 0xff) {
+        out->push_back(static_cast<uint8_t>(base | 24));
+        out->push_back(static_cast<uint8_t>(value));
+    } else if (value <= 0xffff) {
+        out->push_back(static_cast<uint8_t>(base | 25));
+        out->push_back(static_cast<uint8_t>(value >> 8));
+        out->push_back(static_cast<uint8_t>(value));
+    } else {
+        out->push_back(static_cast<uint8_t>(base | 26));
+        for (int shift = 24; shift >= 0; shift -= 8)
+            out->push_back(static_cast<uint8_t>(value >> shift));
+    }
+}
+
+}  // namespace
+
+void Workspace::encode_snapshot(std::vector<uint8_t>* out) const {
+    if (!out) return;
+    out->clear();
+    append_head(5, values_.size(), out);
+    for (const auto& kv : values_) {
+        codec::encode_append(codec::Value::text_v(kv.first), out);
+        codec::encode_append(kv.second, out);
+    }
+}
+
 }  // namespace pime::cap

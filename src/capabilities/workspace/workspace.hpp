@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <map>
 #include <string>
+#include <vector>
 
 #include "codec/cbor.hpp"
 
@@ -27,6 +28,13 @@ public:
     pime_status commit();
     void discard();
     codec::Value snapshot() const;
+    bool has_staged() const { return !staged_.empty(); }
+
+    /* Encodes the committed map straight from the stored values. Unlike
+     * snapshot() this makes no deep copy, so a chain can reuse the same frame
+     * bytes across plugins instead of rebuilding a 640-candidate map each
+     * time. `out` is replaced, not appended to. */
+    void encode_snapshot(std::vector<uint8_t>* out) const;
 
     static std::string full_key(const std::string& alias, const std::string& key);
     static bool valid_full_key(const std::string& key, std::string* alias);

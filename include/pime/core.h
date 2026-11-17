@@ -46,6 +46,10 @@ PIME_API pime_status pime_core_surrounding(pime_session* session,
                                            const pime_text* after);
 PIME_API pime_status pime_core_context(pime_session* session,
                                        const pime_context* context);
+/* Updates the per-key candidate budget carried by frame.context without
+ * dispatching an event. 0 restores the plugin's configured maximum. */
+PIME_API pime_status pime_core_candidate_budget(pime_session* session,
+                                                uint32_t budget);
 PIME_API pime_status pime_core_focus(pime_session* session, int focused);
 PIME_API pime_status pime_core_secure(pime_session* session, int secure);
 PIME_API pime_status pime_core_reset(pime_session* session);

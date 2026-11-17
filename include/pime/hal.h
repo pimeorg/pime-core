@@ -190,6 +190,10 @@ typedef struct {
     const char* locale; uint32_t locale_len;
     uint32_t page_size;
     uint32_t host_caps;
+    /* Candidates a translate plugin should build for a folded strip. 0 keeps
+     * the plugin's configured maximum (the host asks for the full list again
+     * while the candidate table is open). */
+    uint32_t max_candidates;
 } pime_context;
 
 typedef struct {

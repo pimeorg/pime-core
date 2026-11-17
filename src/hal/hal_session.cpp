@@ -1,5 +1,6 @@
 #include "hal_internal.hpp"
 
+#include <cstddef>
 #include <new>
 
 using namespace pime;
@@ -126,12 +127,34 @@ pime_status pime_core_surrounding(pime_session* session,
 pime_status pime_core_context(pime_session* session,
                               const pime_context* context) {
     if (!session_ok(session, nullptr) || !context) return PIME_INVALID;
-    if (!hal::struct_ok(context->size, context->version, sizeof(pime_context)))
+    /* max_candidates was appended after host_caps: accept a struct that ends
+     * at host_caps and treat the missing budget as "plugin default". */
+    if (!hal::struct_ok(context->size, context->version,
+                        offsetof(pime_context, max_candidates)))
         return PIME_INVALID;
     if ((context->app_id_len && !context->app_id) ||
         (context->locale_len && !context->locale))
         return PIME_INVALID;
-    return session->core->context(session->impl, *context);
+    pime_context resolved = {};
+    resolved.size = sizeof(resolved);
+    resolved.version = context->version;
+    resolved.app_id = context->app_id;
+    resolved.app_id_len = context->app_id_len;
+    resolved.field_type = context->field_type;
+    resolved.input_type = context->input_type;
+    resolved.locale = context->locale;
+    resolved.locale_len = context->locale_len;
+    resolved.page_size = context->page_size;
+    resolved.host_caps = context->host_caps;
+    if (context->size >= offsetof(pime_context, max_candidates) +
+                              sizeof(context->max_candidates))
+        resolved.max_candidates = context->max_candidates;
+    return session->core->context(session->impl, resolved);
+}
+
+pime_status pime_core_candidate_budget(pime_session* session, uint32_t budget) {
+    if (!session_ok(session, nullptr)) return PIME_INVALID;
+    return session->core->candidate_budget(session->impl, budget);
 }
 
 pime_status pime_core_focus(pime_session* session, int focused) {

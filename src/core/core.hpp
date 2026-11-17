@@ -70,6 +70,9 @@ struct Session {
     std::string locale;
     uint32_t page_size = 5;
     uint32_t host_caps = 0;
+    /* Per-key candidate budget handed to translate plugins through
+     * frame.context; 0 means the plugin's own configured maximum. */
+    uint32_t candidate_budget = 0;
     bool focused = true;
     bool secure = false;
     std::map<std::string, codec::Value> state;
@@ -144,6 +147,11 @@ public:
     pime_status surrounding(Session* session, const pime_text& before,
                             const pime_text& after);
     pime_status context(Session* session, const pime_context& context);
+    /* Updates the per-key candidate budget without dispatching a context
+     * event: opening the candidate table asks for the full list, folding it
+     * back asks for the display-sized one, and neither should cost a chain
+     * run of its own. */
+    pime_status candidate_budget(Session* session, uint32_t budget);
     pime_status focus(Session* session, bool focused);
     pime_status secure(Session* session, bool secure);
     pime_status reset(Session* session);

@@ -7,6 +7,11 @@
 #include <cstring>
 #include <thread>
 
+#ifdef PIME_PROFILE_TIMING
+#include <chrono>
+#include <cstdio>
+#endif
+
 #include "capabilities/time/time.hpp"
 #include "platform/platform.hpp"
 
@@ -51,6 +56,21 @@ std::vector<uint8_t> bytes_field(const Value& map, const char* key) {
     if (!is_string(value)) return {};
     std::string_view view = value->as_text();
     return std::vector<uint8_t>(view.begin(), view.end());
+}
+
+/* Frame assembly: the workspace is encoded once per commit and spliced into
+ * every plugin's frame. Rebuilding a Value map (and deep-copying a 640-item
+ * candidate array) for every plugin was pure overhead. */
+void append_field(std::vector<uint8_t>* out, const char* key,
+                  const Value& value) {
+    codec::encode_append(Value::text_v(key), out);
+    codec::encode_append(value, out);
+}
+
+void append_raw_field(std::vector<uint8_t>* out, const char* key,
+                      const std::vector<uint8_t>& raw) {
+    codec::encode_append(Value::text_v(key), out);
+    out->insert(out->end(), raw.begin(), raw.end());
 }
 
 uint32_t level_from_value(const Value& request) {
@@ -255,6 +275,18 @@ pime_status Core::run_event(Session* session, const codec::Value& event,
     cap::Workspace* previous_workspace = active_workspace_;
     active_workspace_ = &workspace;
 
+    /* The app-restricted variant of a context event costs one encode per run,
+     * not one per plugin. */
+    const bool strips_app =
+        event.is_map() && event.has("type") &&
+        string_field(event, "type") == "context";
+    const Value stripped_event = strips_app ? without_key(event, "app_id") : Value();
+    std::vector<uint8_t> event_wire;
+    std::vector<uint8_t> stripped_wire;
+    codec::encode(event, &event_wire);
+    std::vector<uint8_t> workspace_wire;
+    workspace.encode_snapshot(&workspace_wire);
+
     pime_status result = PIME_OK;
     for (auto& item : generation->chain) {
         if (!item.enabled || !item.instance || !item.instance->alive()) continue;
@@ -266,26 +298,46 @@ pime_status Core::run_event(Session* session, const codec::Value& event,
             session->state_schema.erase(item.alias);
         }
 
-        Value frame = make_map();
-        Value plugin_event =
-            (event.is_map() && event.has("type") &&
-             string_field(event, "type") == "context" &&
-             !permission_.app_allowed(item.alias))
-                ? without_key(event, "app_id")
-                : event;
-        frame.set("event", plugin_event);
+#ifdef PIME_PROFILE_TIMING
+        using ProfileClock = std::chrono::steady_clock;
+        const auto profile_t0 = ProfileClock::now();
+#endif
+        const bool strip_app =
+            strips_app && !permission_.app_allowed(item.alias);
+        if (strip_app && stripped_wire.empty())
+            codec::encode(stripped_event, &stripped_wire);
+        const std::vector<uint8_t>& ev_wire =
+            strip_app ? stripped_wire : event_wire;
         auto state = session->state.find(item.alias);
-        frame.set("state", state != session->state.end() ? state->second : make_map());
-        frame.set("config", generation->config.for_plugin(item.alias));
-        frame.set("workspace", workspace.snapshot());
-        frame.set("secure", Value::boolean_v(session->secure));
-        frame.set("session", Value::uint_v(session->id));
-        frame.set("host_caps", Value::uint_v(session->host_caps));
-        frame.set("generation", Value::uint_v(generation->id));
-        frame.set("plugin", text_value(item.alias));
+        const Value empty_state = make_map();
+        const Value& state_value =
+            state != session->state.end() ? state->second : empty_state;
+        const Value config_value = generation->config.for_plugin(item.alias);
+        const Value plugin_value = text_value(item.alias);
+        const Value secure_value = Value::boolean_v(session->secure);
+        const Value session_value = Value::uint_v(session->id);
+        const Value host_caps_value = Value::uint_v(session->host_caps);
+        const Value generation_value = Value::uint_v(generation->id);
+#ifdef PIME_PROFILE_TIMING
+        const auto profile_t1 = ProfileClock::now();
+#endif
 
         std::vector<uint8_t> input;
-        codec::encode(frame, &input);
+        input.reserve(workspace_wire.size() + 512);
+        input.push_back(0xAA); /* map(10) */
+        append_raw_field(&input, "event", ev_wire);
+        append_field(&input, "state", state_value);
+        append_field(&input, "config", config_value);
+        append_raw_field(&input, "workspace", workspace_wire);
+        append_field(&input, "context", session->context);
+        append_field(&input, "secure", secure_value);
+        append_field(&input, "session", session_value);
+        append_field(&input, "host_caps", host_caps_value);
+        append_field(&input, "generation", generation_value);
+        append_field(&input, "plugin", plugin_value);
+#ifdef PIME_PROFILE_TIMING
+        const auto profile_t2 = ProfileClock::now();
+#endif
         std::vector<uint8_t> output;
         item.instance->set_session(session->id, session->secure,
                                    session->host_caps);
@@ -295,6 +347,9 @@ pime_status Core::run_event(Session* session, const codec::Value& event,
             result = status;
             break;
         }
+#ifdef PIME_PROFILE_TIMING
+        const auto profile_t3 = ProfileClock::now();
+#endif
         Value decoded;
         status = codec::decode(output.data(), output.size(), &decoded);
         if (status != PIME_OK || !decoded.is_map()) {
@@ -307,7 +362,32 @@ pime_status Core::run_event(Session* session, const codec::Value& event,
             result = status;
             break;
         }
-        workspace.commit();
+#ifdef PIME_PROFILE_TIMING
+        const auto profile_t4 = ProfileClock::now();
+        {
+            auto us = [](ProfileClock::duration d) {
+                return static_cast<int64_t>(
+                    std::chrono::duration_cast<std::chrono::microseconds>(d)
+                        .count());
+            };
+            char line[256];
+            std::snprintf(
+                line, sizeof(line),
+                "%s frame=%zu out=%zu snap=%lld enc=%lld call=%lld "
+                "dec_ing=%lld total=%lld",
+                item.alias.c_str(), input.size(), output.size(),
+                static_cast<long long>(us(profile_t1 - profile_t0)),
+                static_cast<long long>(us(profile_t2 - profile_t1)),
+                static_cast<long long>(us(profile_t3 - profile_t2)),
+                static_cast<long long>(us(profile_t4 - profile_t3)),
+                static_cast<long long>(us(profile_t4 - profile_t0)));
+            log_.write(PIME_LOG_INFO, "core", "profile", line);
+        }
+#endif
+        if (workspace.has_staged()) {
+            workspace.commit();
+            workspace.encode_snapshot(&workspace_wire);
+        }
         last_session_by_alias_[item.alias] = session->id;
     }
 
@@ -755,6 +835,7 @@ pime_status Core::context(Session* session, const pime_context& context) {
     session->input_type = context.input_type;
     session->page_size = context.page_size;
     session->host_caps = context.host_caps;
+    session->candidate_budget = context.max_candidates;
     if (context.locale && context.locale_len)
         session->locale.assign(context.locale, context.locale_len);
     if (session->secure) {
@@ -772,10 +853,30 @@ pime_status Core::context(Session* session, const pime_context& context) {
     value.set("locale", text_value(session->locale));
     if (!session->secure && !session->app_id.empty())
         value.set("app_id", text_value(session->app_id));
+    if (session->candidate_budget > 0)
+        value.set("max_candidates", Value::uint_v(session->candidate_budget));
 
     session->context = value;
     std::vector<Value> commands;
     return run_event(session, value, nullptr, &commands);
+}
+
+pime_status Core::candidate_budget(Session* session, uint32_t budget) {
+    if (!session) return PIME_INVALID;
+    session->candidate_budget = budget;
+    if (budget > 0) {
+        session->context.set("max_candidates", Value::uint_v(budget));
+    } else if (session->context.is_map()) {
+        auto& entries = session->context.map;
+        for (auto it = entries.begin(); it != entries.end();) {
+            if (it->first.is_text() &&
+                it->first.as_text() == "max_candidates")
+                it = entries.erase(it);
+            else
+                ++it;
+        }
+    }
+    return PIME_OK;
 }
 
 pime_status Core::focus(Session* session, bool focused) {
